@@ -19,11 +19,11 @@ let sock;
 
 // ===== KONFIGURASI KEAMANAN =====
 const CONFIG = {
-    minReplyDelay: 4000,
-    maxReplyDelay: 10000,
-    typingDuration: 6000,
+minReplyDelay: 2000,
+    maxReplyDelay: 5000,
+    typingDuration: 3000,
     maxMessagesPerMinute: 10,
-    userCooldown: 8000,
+    userCooldown: 5000,
     adminReplyTimeout: 3600000 // 1 jam - bot auto aktif lagi setelah admin terakhir balas
 };
 
@@ -549,4 +549,5 @@ console.log(`   - Admin reply timeout: ${CONFIG.adminReplyTimeout / 60000} menit
 
 startBot().catch(err => {
     console.error('❌ Error starting bot:', err);
+
 });
