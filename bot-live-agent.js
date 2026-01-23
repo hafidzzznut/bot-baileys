@@ -67,6 +67,18 @@ const autoReplies = {
     'siang': { text: welcomeMessage },
     'sore': { text: welcomeMessage },
     'malam': { text: welcomeMessage },
+    'nanya': { text: welcomeMessage },
+    'ada': { text: welcomeMessage },
+    'apakah': { text: welcomeMessage },
+    'gimana': { text: welcomeMessage },
+    'tes': { text: welcomeMessage },
+    'berapa': { text: welcomeMessage },
+    'dimana': { text: welcomeMessage },
+    'daftar': { text: welcomeMessage },
+    'bisa': { text: welcomeMessage },
+    'kelas': { text: welcomeMessage },
+    'rencana': { text: welcomeMessage },
+    'kapan': { text: welcomeMessage },
     
     // Opsi Live Agent - Opsi 7
     '7': {
@@ -679,4 +691,5 @@ console.log('   - Ketik "MENU" untuk kembali ke auto-reply\n');
 
 startBot().catch(err => {
     console.error('❌ Error starting bot:', err);
+
 });
