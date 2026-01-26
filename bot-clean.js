@@ -23,7 +23,6 @@ const CONFIG = {
     maxReplyDelay: 5000,
     typingDuration: 3000,
     maxMessagesPerMinute: 10,
-    userCooldown: 5000,
     liveAgentTimeout: 30 * 60 * 1000, // 30 menit
 };
 
@@ -35,6 +34,7 @@ const STATE = {
     SPMB_MENU: 'SPMB_MENU',
     S2_MENU: 'S2_MENU',
     OTHER_MENU: 'OTHER_MENU',
+    TO_MENU: 'TO_GRATIS'
 };
 
 // ===== USER STATE MANAGEMENT =====
@@ -43,7 +43,6 @@ const liveAgentSessions = new Map(); // Live agent tracking
 
 // ===== RATE LIMITING =====
 const messageTracker = {
-    lastMessageTime: {},
     messagesInLastMinute: []
 };
 
@@ -62,13 +61,14 @@ const MENUS = {
 Halo kak 👋
 Info bertanya tentang apa?
 
-[TB] Persiapan TUBEL
-[UP] Kelas UPKP Kemenkeu
-[SM] SPMB reguler
-[S2] Persiapan S2 / LPDP
-[OT] UPKP kementerian lain / TOEFL / STIS
-[GR] Garansi Uang Kembali
-[LA] Hubungi Live Agent / Admin
+1. Persiapan TUBEL
+2. Kelas UPKP Kemenkeu
+3. SPMB reguler
+4. Persiapan S2 / LPDP
+5. UPKP kementerian lain / TOEFL / STIS
+6. Garansi Uang Kembali
+7. TO Gratis
+8. Hubungi Live Agent / Admin
 
 Ditunggu maksimal 10menit ya kak 😁 
 Apabila lebih dari 1 jam tidak dijawab mohon re-chat
@@ -80,61 +80,80 @@ Chat Operational Hours : 10.00-22.00 WIB`,
 
 Pilih informasi yang ingin kamu ketahui:
 
-[TB1] Deskripsi Program
-[TB2] Paket Include
-[TB3] Harga & Durasi
-[TB4] Cara Daftar
+1. Deskripsi Program
+2. Paket Include
+3. Harga & Durasi
+4. Cara Daftar
+5. Hubungi Admin
 
-Ketik *MENU* untuk kembali ke menu utama`,
+Ketik *0* untuk kembali ke menu utama`,
 
     // ===== SUBMENU: UPKP =====
     UPKP: `✅ *Kelas UPKP Kemenkeu*
 
 Pilih informasi yang ingin kamu ketahui:
 
-[UP1] Deskripsi Program
-[UP2] Jadwal & Pendaftaran
-[UP3] Paket Include
-[UP4] Harga & Durasi
-[UP5] Cara Daftar
+1. Deskripsi Program
+2. Jadwal & Pendaftaran
+3. Paket Include
+4. Harga & Durasi
+5. Cara Daftar
+6. Hubungi Admin
 
-Ketik *MENU* untuk kembali ke menu utama`,
+Ketik *0* untuk kembali ke menu utama`,
 
     // ===== SUBMENU: SPMB =====
     SPMB: `✅ *SPMB Reguler*
 
 Pilih informasi yang ingin kamu ketahui:
 
-[SM1] Info Program
-[SM2] Paket Try Out
+1. Info Program
+2. Paket Try Out
+3. Hubungi Admin
 
-Ketik *MENU* untuk kembali ke menu utama`,
+Ketik *0* untuk kembali ke menu utama`,
 
     // ===== SUBMENU: S2/LPDP =====
     S2: `✅ *Persiapan S2 / LPDP*
 
 Pilih informasi yang ingin kamu ketahui:
 
-[S21] Status Program
+1. Status Program
+2. Hubungi Admin
 
-Ketik *MENU* untuk kembali ke menu utama`,
+Ketik *0* untuk kembali ke menu utama`,
 
     // ===== SUBMENU: UPKP LAIN =====
     OTHER: `✅ *UPKP Lain / TOEFL / STIS*
 
 Pilih informasi yang ingin kamu ketahui:
 
-[OT1] UPKP Kementerian Lain
-[OT2] TOEFL
-[OT3] STIS
+1. UPKP Kementerian Lain
+2. TOEFL
+3. STIS
+4. Hubungi Admin
 
-Ketik *MENU* untuk kembali ke menu utama`,
+Ketik *0* untuk kembali ke menu utama`,
+
+
+ // ===== SUBMENU: TO GRATIS =====
+    TO_GRATIS: `✅ *TO_Gratis*
+
+Pilih informasi yang ingin kamu ketahui:
+
+1. Detail TO
+2. Cara Daftar
+3. Pelaksanaan
+4. Hubungi Admin
+
+Ketik *0* untuk kembali ke menu utama`,
+
 };
 
 // ===== CONTENT RESPONSES =====
 const CONTENT = {
     // ----- TUBEL CONTENT -----
-    TB1: {
+    TUBEL_1: {
         text: `📋 *Deskripsi Program TUBEL*
 
 Untuk saat ini kelas Tugas Belajar (TUBEL) masih dalam tahap persiapan. 
@@ -145,10 +164,10 @@ InsyaAllah akan dimulai dengan sesi warm up seperti:
 
 Informasi lengkap akan diumumkan melalui grup dan media resmi kami (@aortatubelupkp).
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali`
     },
 
-    TB2: {
+    TUBEL_2: {
         text: `📦 *Paket Include TUBEL*
 
 ✅ Soal-soal TPA sesuai standar Tubel
@@ -156,21 +175,21 @@ Ketik *MENU* untuk kembali`
 ✅ Pembahasan lengkap
 ✅ Sistem penilaian otomatis
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali`
     },
 
-    TB3: {
+    TUBEL_3: {
         text: `💰 *Harga & Durasi TUBEL*
 
 Harga: Soon! Akan rilis dalam waktu dekat
 Durasi: [Sesuai paket]
 
-Untuk info lebih lanjut, hubungi admin dengan ketik *LA*
+Untuk info lebih lanjut, hubungi admin dengan ketik *5*
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali`
     },
 
-    TB4: {
+    TUBEL_4: {
         text: `📝 *Cara Daftar Kelas TUBEL*
 
 1️⃣ Buat akun & login di website
@@ -188,11 +207,11 @@ Ketik *MENU* untuk kembali`
 
 📌 Akses kelas otomatis setelah pembayaran berhasil
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali`
     },
 
     // ----- UPKP CONTENT -----
-    UP1: {
+    UPKP_1: {
         text: `📋 *Deskripsi Program UPKP Kemenkeu*
 
 Kelas persiapan khusus untuk UPKP Kemenkeu dengan materi yang disesuaikan dengan kisi-kisi terbaru.
@@ -202,10 +221,10 @@ Program meliputi:
 • TSKKWK (Tes Substansi Keuangan, Kepemerintahan, dan Wawasan Kebangsaan)
 • Psikotes
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali`
     },
 
-    UP2: {
+    UPKP_2: {
         text: `📅 *Jadwal & Pendaftaran UPKP*
 
 Kelas UPKP Kemenkeu direncanakan mulai dibuka pada bulan *Februari*.
@@ -214,10 +233,10 @@ Open registrasi akan diinformasikan secara resmi melalui:
 • Grup resmi
 • Instagram @aortatubelupkp
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali`
     },
 
-    UP3: {
+    UPKP_3: {
         text: `📦 *Paket Include UPKP*
 
 ✅ Soal-soal sesuai kisi-kisi UPKP Kemenkeu
@@ -226,21 +245,21 @@ Ketik *MENU* untuk kembali`
 ✅ Simulasi ujian sebenarnya
 ✅ Akses rekaman kelas
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali`
     },
 
-    UP4: {
+    UPKP_4: {
         text: `💰 *Harga & Durasi UPKP*
 
 Harga: Soon! Akan rilis dalam waktu dekat
 Durasi: [Sesuai paket yang dipilih]
 
-Untuk info lebih lanjut, hubungi admin dengan ketik *LA*
+Untuk info lebih lanjut, hubungi admin dengan ketik *6*
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali`
     },
 
-    UP5: {
+    UPKP_5: {
         text: `📝 *Cara Daftar Kelas UPKP*
 
 1️⃣ Buat akun & login di website
@@ -258,71 +277,71 @@ Ketik *MENU* untuk kembali`
 
 📌 Akses kelas otomatis setelah pembayaran berhasil
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali`
     },
 
     // ----- SPMB CONTENT -----
-    SM1: {
+    SPMB_1: {
         text: `📋 *Info Program SPMB Reguler*
 
 Untuk SPMB reguler saat ini kami hanya menyediakan paket Try Out (TO).
 
 Belum tersedia kelas intensif.
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali atau *4* untuk hubungi admin`
     },
 
-    SM2: {
+    SPMB_2: {
         text: `📝 *SPMB Reguler*
 
 📋 *Deskripsi:*
 Untuk SPMB reguler saat ini kami hanya menyediakan paket Try Out (TO). Belum tersedia kelas intensif.
 
-Untuk info lebih lanjut, hubungi admin dengan ketik *LA*
+Untuk info lebih lanjut, hubungi admin dengan ketik *4*
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali atau *4* untuk hubungi admin`
     },
 
     // ----- S2/LPDP CONTENT -----
-    S21: {
+    S2_1: {
         text: `📋 *Status Program S2 / LPDP*
 
 Saat ini kelas persiapan Beasiswa Dalam Negeri maupun Luar Negeri masih dalam tahap pengembangan.
 
 InsyaAllah akan tersedia ke depannya, mohon ditunggu ya kak 🙏
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali atau *4* untuk hubungi admin`
     },
 
     // ----- UPKP LAIN / TOEFL / STIS -----
-    OT1: {
+    OTHER_1: {
         text: `📋 *UPKP Kementerian Lain*
 
 Saat ini Aorta hanya melayani UPKP untuk Kemenkeu.
 
 Untuk kementerian lain masih dalam tahap pengembangan.
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali atau *4* untuk hubungi admin`
     },
 
-    OT2: {
+    OTHER_2: {
         text: `📋 *Program TOEFL*
 
 Program persiapan TOEFL masih dalam tahap pengembangan.
 
 InsyaAllah akan tersedia segera.
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali atau *4* untuk hubungi admin`
     },
 
-    OT3: {
+    OTHER_3: {
         text: `📋 *Program STIS*
 
 Untuk STIS tahun ini hanya tersedia paket Try Out (TO).
 
 Belum ada kelas intensif.
 
-Ketik *MENU* untuk kembali`
+Ketik *0* untuk kembali atau *4* untuk hubungi admin`
     },
 
     // ----- GARANSI -----
@@ -344,8 +363,52 @@ Syarat:
 🔘 Kelulusan UPKP ditentukan oleh hasil usaha peserta sendiri dan faktor pendukung lainnya
 🔘 Mekanisme garansi adalah bentuk komitmen AORTA kepada peserta atas kualitas pembelajaran, sekaligus mengajak peserta untuk mengikuti pembelajaran dengan sungguh-sungguh
 
-📲 Ada pertanyaan lain? Ketik *MENU* atau hubungi admin dengan ketik *7* 😊`
+📲 Ada pertanyaan lain? Ketik *0* atau hubungi admin dengan ketik *7* 😊`
     },
+
+     // ----- TO Gratis Content -----
+
+    TO_GRATIS_1: {
+        text: `📋 *Deskripsi Program TO GRATIS*
+
+TO GRATIS TPA, TBI & UPKP 2026
+Persiapkan diri Kamu sebaik mungkin untuk menghadapi ujian sesungguhnya dengan mengikuti Try Out (TO) dari Aorta. 
+Jangan lewatkan kesempatan untuk mengukur kemampuan Kamu secara nasional!
+
+🎯 Fasilitas:
+✅ Ranking Nasional
+✅ Pembahasan Soal
+✅ Skor Instan
+
+Informasi lengkap akan diumumkan melalui grup dan media resmi kami (@aortatubelupkp).
+
+Ketik *0* untuk kembali`
+    },
+
+    TO_GRATIS_2: {
+        text: `📝 *Cara Daftar TO Gratis*
+
+    📝 Cara Mendaftar:
+    1️⃣ Follow Instagram @aortatubelupkp
+    2️⃣ Tag 3 teman kamu di kolom komentar
+    3️⃣ Upload bukti follow & tag melalui link :
+        🌐linktr.ee/aortatubelupkp
+
+
+📌 info lebih lanjut akan di umumkan di Instagram @aortatubelupkp
+
+Ketik *0* untuk kembali`
+    },
+
+    TO_GRATIS_3: {
+    text: `📅 *Pelaksanaan TO Gratis*
+
+    31 Januari – 2 Februari 2026
+
+    Ketik *0* untuk kembali`
+    },
+
+
 
     // ----- LIVE AGENT -----
     LIVE_AGENT: {
@@ -360,7 +423,7 @@ Silakan tunggu sebentar, admin kami akan segera merespons ya! 😊
 
 Atau Anda bisa langsung mengetik pertanyaan/pesan Anda sekarang.
 
-_Catatan: Untuk kembali ke menu otomatis, ketik "MENU"_`,
+_Catatan: Untuk kembali ke menu otomatis, ketik "0"_`,
         activateLiveAgent: true
     },
 };
@@ -371,15 +434,16 @@ const FALLBACK = {
 
 Silakan pilih menu di bawah ini:
 
-[TB] Persiapan TUBEL
-[UP] Kelas UPKP Kemenkeu
-[SM] SPMB reguler
-[S2] Persiapan S2 / LPDP
-[OT] UPKP kementerian lain / TOEFL / STIS
-[GR] Garansi Uang Kembali
-[LA] Hubungi Live Agent / Admin
+1. Persiapan TUBEL
+2. Kelas UPKP Kemenkeu
+3. SPMB reguler
+4. Persiapan S2 / LPDP
+5. UPKP kementerian lain / TOEFL / STIS
+6. Garansi Uang Kembali
+7. TO Gratis
+8. Hubungi Live Agent / Admin
 
-Atau ketik *MENU* untuk melihat opsi lengkap 😊`
+Atau ketik *0* untuk melihat opsi lengkap 😊`
 };
 
 // ===================================================
@@ -419,18 +483,18 @@ function routeMessage(userId, messageText) {
     // ===== GLOBAL COMMANDS (work from any state) =====
     
     // Reset ke main menu
-    if (input === 'menu' || input === 'kembali' || input === 'back') {
+    if (input === '0' || input === 'menu' || input === 'kembali' || input === 'back') {
         resetUserState(userId);
         return { text: MENUS.MAIN, deactivateLiveAgent: true };
     }
 
     // Garansi (bisa diakses dari mana saja)
-    if (input === 'gr' || input.includes('garansi')) {
+    if (input === '6' || input.includes('garansi')) {
         return CONTENT.GARANSI;
     }
 
     // Live Agent (bisa diakses dari mana saja)
-    if (input === 'la' || input === 'live agent' || input === 'agent' || 
+    if (input === '8' || input === 'live agent' || input === 'agent' || 
         input === 'admin' || input.includes('hubungi admin') || 
         input.includes('bicara dengan admin')) {
         return CONTENT.LIVE_AGENT;
@@ -467,6 +531,9 @@ function routeMessage(userId, messageText) {
         
         case STATE.OTHER_MENU:
             return handleOtherMenu(userId, input);
+
+        case STATE.TO_MENU:
+            return handletoGratisMenu(userId, input)
         
         default:
             resetUserState(userId);
@@ -477,36 +544,37 @@ function routeMessage(userId, messageText) {
 // ===== MAIN MENU HANDLER =====
 function handleMainMenu(userId, input) {
     switch (input) {
-        case 'tb':
+        case '1':
             setUserState(userId, STATE.TUBEL_MENU);
             return { text: MENUS.TUBEL };
         
-        case 'up':
+        case '2':
             setUserState(userId, STATE.UPKP_MENU);
             return { text: MENUS.UPKP };
         
-        case 'sm':
+        case '3':
             setUserState(userId, STATE.SPMB_MENU);
             return { text: MENUS.SPMB };
         
-        case 's2':
+        case '4':
             setUserState(userId, STATE.S2_MENU);
             return { text: MENUS.S2 };
         
-        case 'ot':
+        case '5':
             setUserState(userId, STATE.OTHER_MENU);
             return { text: MENUS.OTHER };
         
-        case 'gr':
-            // Garansi bisa langsung tampil tanpa ganti state
+        case '6':
             return CONTENT.GARANSI;
+
+        case '7':
+            setUserState(userId, STATE.TO_MENU);
+            return {text: MENUS.TO_GRATIS};
         
-        case 'la':
-            // Live Agent
+        case '8':
             return CONTENT.LIVE_AGENT;
         
         default:
-            // Fallback: tidak mengerti, tampilkan ulang menu
             return FALLBACK;
     }
 }
@@ -514,16 +582,17 @@ function handleMainMenu(userId, input) {
 // ===== TUBEL SUBMENU HANDLER =====
 function handleTubelMenu(userId, input) {
     switch (input) {
-        case 'tb1':
-            return CONTENT.TB1;
-        case 'tb2':
-            return CONTENT.TB2;
-        case 'tb3':
-            return CONTENT.TB3;
-        case 'tb4':
-            return CONTENT.TB4
+        case '1':
+            return CONTENT.TUBEL_1;
+        case '2':
+            return CONTENT.TUBEL_2;
+        case '3':
+            return CONTENT.TUBEL_3;
+        case '4':
+            return CONTENT.TUBEL_4;
+        case '5':
+            return CONTENT.LIVE_AGENT;
         default:
-            // Tidak valid, tampilkan ulang submenu TUBEL
             return { text: MENUS.TUBEL };
     }
 }
@@ -531,18 +600,19 @@ function handleTubelMenu(userId, input) {
 // ===== UPKP SUBMENU HANDLER =====
 function handleUpkpMenu(userId, input) {
     switch (input) {
-        case 'up1':
-            return CONTENT.UP1;
-        case 'up2':
-            return CONTENT.UP2;
-        case 'up3':
-            return CONTENT.UP3;
-        case 'up4':
-            return CONTENT.UP4;
-        case 'up5':
-            return CONTENT.UP5;
+        case '1':
+            return CONTENT.UPKP_1;
+        case '2':
+            return CONTENT.UPKP_2;
+        case '3':
+            return CONTENT.UPKP_3;
+        case '4':
+            return CONTENT.UPKP_4;
+        case '5':
+            return CONTENT.UPKP_5;
+        case '6':
+            return CONTENT.LIVE_AGENT;
         default:
-            // Tidak valid, tampilkan ulang submenu UPKP
             return { text: MENUS.UPKP };
     }
 }
@@ -550,10 +620,12 @@ function handleUpkpMenu(userId, input) {
 // ===== SPMB SUBMENU HANDLER =====
 function handleSpmbMenu(userId, input) {
     switch (input) {
-        case 'sm1':
-            return CONTENT.SM1;
-        case 'sm2':
-            return CONTENT.SM2;
+        case '1':
+            return CONTENT.SPMB_1;
+        case '2':
+            return CONTENT.SPMB_2;
+        case '3':
+            return CONTENT.LIVE_AGENT;
         default:
             return { text: MENUS.SPMB };
     }
@@ -562,8 +634,10 @@ function handleSpmbMenu(userId, input) {
 // ===== S2/LPDP SUBMENU HANDLER =====
 function handleS2Menu(userId, input) {
     switch (input) {
-        case 's21':
-            return CONTENT.S21;
+        case '1':
+            return CONTENT.S2_1;
+        case '2':
+            return CONTENT.LIVE_AGENT;
         default:
             return { text: MENUS.S2 };
     }
@@ -572,16 +646,36 @@ function handleS2Menu(userId, input) {
 // ===== OTHER (UPKP LAIN) SUBMENU HANDLER =====
 function handleOtherMenu(userId, input) {
     switch (input) {
-        case 'ot1':
-            return CONTENT.OT1;
-        case 'ot2':
-            return CONTENT.OT2;
-        case 'ot3':
-            return CONTENT.OT3;
+        case '1':
+            return CONTENT.OTHER_1;
+        case '2':
+            return CONTENT.OTHER_2;
+        case '3':
+            return CONTENT.OTHER_3;
+        case '4':
+            return CONTENT.LIVE_AGENT;
         default:
             return { text: MENUS.OTHER };
     }
 }
+
+// ===== TO Gratis SUBMENU HANDLER =====
+function handletoGratisMenu(userId, input) {
+    switch (input) {
+        case '1':
+            return CONTENT.TO_GRATIS_1;
+        case '2':
+            return CONTENT.TO_GRATIS_2;
+        case '3':
+            return CONTENT.TO_GRATIS_3;
+        case '4':
+            return CONTENT.LIVE_AGENT;
+        default:
+            return { text: MENUS.TO_GRATIS };
+    }
+}
+
+
 
 // ===================================================
 // ===== LIVE AGENT MANAGEMENT =====
@@ -645,15 +739,8 @@ function isRateLimited() {
     return messageTracker.messagesInLastMinute.length >= CONFIG.maxMessagesPerMinute;
 }
 
-function isUserOnCooldown(userId) {
+function updateTracking() {
     const now = Date.now();
-    const lastTime = messageTracker.lastMessageTime[userId];
-    return lastTime && (now - lastTime) < CONFIG.userCooldown;
-}
-
-function updateTracking(userId) {
-    const now = Date.now();
-    messageTracker.lastMessageTime[userId] = now;
     messageTracker.messagesInLastMinute.push(now);
 }
 
@@ -667,16 +754,12 @@ async function sendReply(sock, jid, reply) {
         console.log('✍️  Typing...');
         await simulateTyping(sock, jid);
 
-        // Tambahkan cooldown reminder ke teks
-        const cooldownSeconds = Math.ceil(CONFIG.userCooldown / 1000);
-        const replyText = reply.text + `\n\n_⏳ Mohon tunggu ${cooldownSeconds} detik sebelum chat berikutnya_`;
-
         // Support untuk file
         if (reply.file) {
             const filePath = path.join(__dirname, reply.file);
             
             if (fs.existsSync(filePath)) {
-                await sock.sendMessage(jid, { text: replyText });
+                await sock.sendMessage(jid, { text: reply.text });
                 
                 const fileBuffer = fs.readFileSync(filePath);
                 await sock.sendMessage(jid, {
@@ -688,7 +771,7 @@ async function sendReply(sock, jid, reply) {
             } else {
                 console.log(`⚠️ File tidak ditemukan: ${filePath}`);
                 await sock.sendMessage(jid, { 
-                    text: replyText + '\n\n⚠️ (Maaf kak, file sementara tidak tersedia)' 
+                    text: reply.text + '\n\n⚠️ (Maaf kak, file sementara tidak tersedia)' 
                 });
             }
         }
@@ -700,17 +783,17 @@ async function sendReply(sock, jid, reply) {
                 const imageBuffer = fs.readFileSync(imagePath);
                 await sock.sendMessage(jid, {
                     image: imageBuffer,
-                    caption: replyText
+                    caption: reply.text
                 });
                 console.log(`📸 Gambar terkirim: ${reply.image}`);
             } else {
                 console.log(`⚠️ Gambar tidak ditemukan: ${imagePath}`);
-                await sock.sendMessage(jid, { text: replyText });
+                await sock.sendMessage(jid, { text: reply.text });
             }
         } 
         // Kirim text saja
         else {
-            await sock.sendMessage(jid, { text: replyText });
+            await sock.sendMessage(jid, { text: reply.text });
         }
 
         return true;
@@ -747,12 +830,12 @@ async function startBot() {
 
         if (connection === 'open') {
             console.log('\n✅ Bot WhatsApp v2.0 sudah aktif!\n');
-            console.log('🎯 Fitur Baru:');
+            console.log('🎯 Fitur:');
             console.log('   ✓ Context/State Management');
-            console.log('   ✓ Kode Menu Unik (UP, TB, SM, dll)');
+            console.log('   ✓ Menu Berbasis Angka');
             console.log('   ✓ Smart Fallback');
             console.log('   ✓ Live Agent Mode');
-            console.log('   ✓ Anti-Keyword Collision\n');
+            console.log('   ✓ No User Cooldown\n');
         }
 
         if (connection === 'close') {
@@ -803,7 +886,8 @@ async function startBot() {
             session.lastActivity = Date.now();
             
             // Cek apakah user mau kembali ke menu
-            if (messageText === 'menu' || messageText === 'kembali' || messageText === 'back') {
+            if (messageText === '0' || messageText === 'menu' || 
+                messageText === 'kembali' || messageText === 'back') {
                 const reply = routeMessage(userId, messageText);
                 await sendReply(sock, from, reply);
                 
@@ -811,7 +895,7 @@ async function startBot() {
                     deactivateLiveAgent(userId);
                 }
                 
-                updateTracking(userId);
+                updateTracking();
             } else {
                 console.log(`⏸️  Auto-reply DINONAKTIFKAN - menunggu admin`);
             }
@@ -823,18 +907,6 @@ async function startBot() {
         if (isRateLimited()) {
             console.log('⚠️  Rate limit tercapai! Menunggu...');
             await delay(10000);
-        }
-
-        if (isUserOnCooldown(userId)) {
-            console.log(`⏸️  User ${userId} on cooldown`);
-            
-            // Kirim notifikasi cooldown ke user
-            const cooldownSeconds = Math.ceil(CONFIG.userCooldown / 1000);
-            await sock.sendMessage(from, { 
-                text: `⏳ Mohon tunggu ${cooldownSeconds} detik sebelum mengirim pesan berikutnya ya kak 😊` 
-            });
-            
-            return;
         }
 
         // ===== ROUTE MESSAGE =====
@@ -854,7 +926,7 @@ async function startBot() {
 
         if (success) {
             console.log(`✅ Dibalas: "${reply.text.substring(0, 50)}..."\n`);
-            updateTracking(userId);
+            updateTracking();
         } else {
             console.log(`❌ Gagal kirim ke ${userId}\n`);
         }
@@ -884,11 +956,11 @@ process.on('SIGTERM', gracefulShutdown);
 // ===== START BOT =====
 console.log('🚀 Starting Aorta Bot v2.0...');
 console.log('🎯 Fitur:');
-console.log('   ✓ Context/State Management (Map-based)');
-console.log('   ✓ Unique Menu Codes (UP, TB, SM, S2, OT)');
+console.log('   ✓ Context/State Management');
+console.log('   ✓ Menu Berbasis Angka (0-8)');
 console.log('   ✓ Smart Fallback System');
 console.log('   ✓ Live Agent Mode');
-console.log('   ✓ Zero Keyword Collision');
+console.log('   ✓ No User Cooldown');
 console.log('   ✓ Clean & Scalable Architecture\n');
 
 startBot().catch(err => {
