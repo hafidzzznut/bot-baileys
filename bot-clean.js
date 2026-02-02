@@ -24,6 +24,7 @@ const CONFIG = {
     typingDuration: 3000,
     maxMessagesPerMinute: 10,
     liveAgentTimeout: 30 * 60 * 1000, // 30 menit
+    adminPauseDuration: 60 * 60 * 1000, // 1 jam pause jika admin chat duluan
 };
 
 // ===== STATE TYPES =====
@@ -34,12 +35,15 @@ const STATE = {
     SPMB_MENU: 'SPMB_MENU',
     S2_MENU: 'S2_MENU',
     OTHER_MENU: 'OTHER_MENU',
-    TO_MENU: 'TO_GRATIS'
+    TO_MENU: 'TO_GRATIS',
+    TIMEOUT_MENU: 'TIMEOUT_MENU'
 };
 
 // ===== USER STATE MANAGEMENT =====
 const userStates = new Map(); // { userId: { state: STATE.MAIN_MENU, lastActivity: timestamp } }
 const liveAgentSessions = new Map(); // Live agent tracking
+const adminPausedUsers = new Map(); // Track users paused by admin chat { userId: pauseUntil }
+const conversationInitiators = new Map(); // Track who initiated the conversation { chatId: 'user' | 'admin' }
 
 // ===== RATE LIMITING =====
 const messageTracker = {
@@ -426,6 +430,18 @@ Atau Anda bisa langsung mengetik pertanyaan/pesan Anda sekarang.
 _Catatan: Untuk kembali ke menu otomatis, ketik "0"_`,
         activateLiveAgent: true
     },
+
+    // ----- TIMEOUT NOTIFICATION -----
+    TIMEOUT_NOTIFICATION: {
+        text: `⏰ *Karena anda tidak membalas chat sebelumnya, kamu mulai saat ini akan berbicara dengan Agent Bot*
+
+Silakan pilih opsi:
+
+1️⃣ Ingin bertanya lebih lanjut dengan AortaBot
+2️⃣ Chat dengan admin
+
+Ketik *1* atau *2* untuk memilih`
+    },
 };
 
 // ===== DEFAULT FALLBACK =====
@@ -445,6 +461,57 @@ Silakan pilih menu di bawah ini:
 
 Atau ketik *0* untuk melihat opsi lengkap 😊`
 };
+
+// ===================================================
+// ===== ADMIN PAUSE MANAGEMENT =====
+// ===================================================
+
+function isUserPausedByAdmin(userId) {
+    if (!adminPausedUsers.has(userId)) return false;
+    
+    const pauseData = adminPausedUsers.get(userId);
+    const now = Date.now();
+    
+    if (now >= pauseData.pauseUntil) {
+        // Pause expired, remove it
+        adminPausedUsers.delete(userId);
+        console.log(`⏰ Admin pause expired for user: ${userId}`);
+        return false;
+    }
+    
+    return true;
+}
+
+function pauseUserByAdmin(userId) {
+    const pauseUntil = Date.now() + CONFIG.adminPauseDuration;
+    adminPausedUsers.set(userId, {
+        pauseUntil: pauseUntil,
+        notificationSent: false
+    });
+    
+    const pauseMinutes = CONFIG.adminPauseDuration / (60 * 1000);
+    console.log(`⏸️  Bot PAUSED for user ${userId} for ${pauseMinutes} minutes (admin initiated)`);
+}
+
+function unpauseUser(userId) {
+    if (adminPausedUsers.has(userId)) {
+        adminPausedUsers.delete(userId);
+        conversationInitiators.delete(userId); // Reset initiator tracking
+        console.log(`▶️  Bot RESUMED for user: ${userId}`);
+    }
+}
+
+// Auto-check expired pauses every 5 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [userId, pauseData] of adminPausedUsers.entries()) {
+        if (now >= pauseData.pauseUntil) {
+            adminPausedUsers.delete(userId);
+            conversationInitiators.delete(userId); // Reset initiator tracking
+            console.log(`⏰ Admin pause auto-expired for user: ${userId}`);
+        }
+    }
+}, 5 * 60 * 1000);
 
 // ===================================================
 // ===== STATE MANAGEMENT FUNCTIONS =====
@@ -829,12 +896,13 @@ async function startBot() {
         }
 
         if (connection === 'open') {
-            console.log('\n✅ Bot WhatsApp v2.0 sudah aktif!\n');
+            console.log('\n✅ Bot WhatsApp v2.1 sudah aktif!\n');
             console.log('🎯 Fitur:');
             console.log('   ✓ Context/State Management');
             console.log('   ✓ Menu Berbasis Angka');
             console.log('   ✓ Smart Fallback');
             console.log('   ✓ Live Agent Mode');
+            console.log('   ✓ Admin First-Chat Auto Pause (1 jam)');
             console.log('   ✓ No User Cooldown\n');
         }
 
@@ -857,10 +925,10 @@ async function startBot() {
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0];
         if (!msg.message) return;
-        if (msg.key.fromMe) return;
-
+        
         const from = msg.key.remoteJid;
         const userId = from.split('@')[0];
+        const isFromMe = msg.key.fromMe;
 
         // Skip excluded numbers
         if (excludedNumbers.includes(from)) return;
@@ -875,8 +943,77 @@ async function startBot() {
 
         const messageText = text.toLowerCase().trim();
 
-        console.log(`\n📨 [${new Date().toLocaleString('id-ID')}] Pesan dari ${userId}`);
+        console.log(`\n📨 [${new Date().toLocaleString('id-ID')}] Pesan dari ${isFromMe ? 'ADMIN' : userId}`);
         console.log(`💬 "${text}"`);
+
+        // ===== TRACK CONVERSATION INITIATOR =====
+        if (!conversationInitiators.has(from)) {
+            // First message in this conversation
+            if (isFromMe) {
+                conversationInitiators.set(from, 'admin');
+                console.log(`🎯 Conversation INITIATED by ADMIN`);
+            } else {
+                conversationInitiators.set(from, 'user');
+                console.log(`🎯 Conversation INITIATED by USER`);
+            }
+        }
+
+        // ===== DETEKSI: ADMIN CHAT DULUAN (INISIASI) =====
+        if (isFromMe && conversationInitiators.get(from) === 'admin') {
+            console.log(`👨‍💼 Pesan dari ADMIN terdeteksi (Admin initiated chat)`);
+            
+            // Pause bot untuk chat ini (admin sedang handle)
+            pauseUserByAdmin(from);
+            console.log(`⏸️  Bot auto-paused for chat ${userId} (admin initiated)`);
+            
+            return; // JANGAN kirim auto-reply apapun
+        }
+        
+        // Jika admin reply tapi user yang chat duluan, jangan pause
+        if (isFromMe && conversationInitiators.get(from) === 'user') {
+            // Check if this is admin's MANUAL message (not bot's auto-reply)
+            const isBotTemplate = text.includes('[Chat Otomatis]') || 
+                                  text.includes('✅ *') ||
+                                  text.includes('Ketik *0* untuk kembali') ||
+                                  text.includes('Pilih informasi yang ingin kamu ketahui') ||
+                                  text.includes('Maaf kak, saya tidak mengerti');
+            
+            if (!isBotTemplate) {
+                // This is MANUAL message from admin - PAUSE immediately
+                console.log(`🚨 ADMIN MANUAL INTERVENTION detected!`);
+                console.log(`👨‍💼 Admin is manually responding - pausing bot`);
+                
+                conversationInitiators.set(from, 'admin'); // Override to admin
+                pauseUserByAdmin(from);
+                console.log(`⏸️  Bot auto-paused for chat ${userId} (admin manual intervention)`);
+                
+                return; // Don't auto-reply
+            }
+            
+            // Bot's own template - just skip
+            console.log(`🤖 Bot template detected - skipping`);
+            return; // Skip admin's reply, don't process
+        }
+
+        // ===== CEK: USER DIPAUSE OLEH ADMIN =====
+        if (isUserPausedByAdmin(from)) {
+            const pauseUntil = adminPausedUsers.get(from);
+            const remainingMinutes = Math.ceil((pauseUntil - Date.now()) / (60 * 1000));
+            
+            console.log(`⏸️  Bot PAUSED for user ${userId} (${remainingMinutes} minutes remaining)`);
+            console.log(`⏸️  Menunggu admin membalas...`);
+            
+            // Check if user wants to unpause
+            if (messageText === '0' || messageText === 'menu' || 
+                messageText === 'kembali' || messageText === 'back') {
+                unpauseUser(from);
+                const reply = routeMessage(userId, messageText);
+                await sendReply(sock, from, reply);
+                updateTracking();
+            }
+            
+            return; // Don't auto-reply when paused
+        }
 
         // ===== CEK LIVE AGENT MODE =====
         if (isInLiveAgentMode(userId)) {
@@ -954,12 +1091,13 @@ process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
 // ===== START BOT =====
-console.log('🚀 Starting Aorta Bot v2.0...');
+console.log('🚀 Starting Aorta Bot v2.1...');
 console.log('🎯 Fitur:');
 console.log('   ✓ Context/State Management');
 console.log('   ✓ Menu Berbasis Angka (0-8)');
 console.log('   ✓ Smart Fallback System');
 console.log('   ✓ Live Agent Mode');
+console.log('   ✓ Admin First-Chat Auto Pause (1 jam)');
 console.log('   ✓ No User Cooldown');
 console.log('   ✓ Clean & Scalable Architecture\n');
 
