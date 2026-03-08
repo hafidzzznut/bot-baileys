@@ -1,4 +1,3 @@
-//tes
 import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
@@ -694,4 +693,5 @@ startBot().catch(err => {
     console.error('❌ Error starting bot:', err);
 
 });
+
 
