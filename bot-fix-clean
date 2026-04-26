@@ -1,0 +1,1266 @@
+import makeWASocket, {
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    delay
+} from '@whiskeysockets/baileys';
+
+import Pino from 'pino';
+import qrcode from 'qrcode-terminal';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ===== ES MODULE SETUP =====
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let sock;
+
+// ===== KONFIGURASI =====
+const CONFIG = {
+    minReplyDelay: 2000,
+    maxReplyDelay: 5000,
+    typingDuration: 3000,
+    maxMessagesPerMinute: 10,
+    liveAgentTimeout: 30 * 60 * 1000,
+    adminPauseDuration: 60 * 60 * 1000,
+};
+
+// ===== STATE TYPES =====
+const STATE = {
+    MAIN_MENU:    'MAIN_MENU',
+    UPKP_MENU:    'UPKP_MENU',
+    TUBEL_MENU:   'TUBEL_MENU',
+    SAK_MENU:     'SAK_MENU',
+    S2_MENU:      'S2_MENU',
+    OTHER_MENU:   'OTHER_MENU',
+    TO_MENU:      'TO_GRATIS',
+    GARANSI_MENU: 'GARANSI_MENU',
+};
+
+// ===== USER STATE MANAGEMENT =====
+const userStates             = new Map();
+const liveAgentSessions      = new Map();
+const adminPausedUsers       = new Map();
+const conversationInitiators = new Map();
+
+// ===== RATE LIMITING =====
+const messageTracker = { messagesInLastMinute: [] };
+
+// ===== NOMOR YANG DIKECUALIKAN =====
+const excludedNumbers = [
+    // '628123456789@s.whatsapp.net',
+];
+
+// ===================================================
+// ===== MENU CONTENT DEFINITIONS =====
+// ===================================================
+
+const MENUS = {
+
+    // ── MAIN MENU ────────────────────────────────
+    MAIN: `[Chat Otomatis] 
+Halo kak 👋
+Info bertanya tentang apa?
+
+1. Persiapan TUBEL
+2. UPKP Kemenkeu
+3. SAK Bea Cukai
+4. Persiapan S2 / LPDP
+5. UPKP kementerian lain / TOEFL / STIS
+6. Garansi Uang Kembali
+7. TO Gratis
+8. Hubungi Admin
+
+Ditunggu maksimal 10menit ya kak 😁 
+Apabila lebih dari 1 jam tidak dijawab mohon re-chat
+
+Chat Operational Hours : 10.00-22.00 WIB`,
+
+    // ── TUBEL Level 1 ────────────────────────────
+    TUBEL: `✅ *Persiapan TUBEL*
+
+Pilih program yang ingin kamu ketahui:
+
+1. TUBEL STAN
+2. TUBEL BPKP
+3. Hubungi Admin
+
+Ketik *0* untuk kembali ke menu utama`,
+
+    // ── TUBEL STAN Level 2 ───────────────────────
+    TUBEL_STAN: `✅ *TUBEL STAN*
+
+Pilih program yang ingin kamu ketahui:
+
+1. Kelas TUBEL STAN
+2. TO TUBEL STAN
+3. Hubungi Admin
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`,
+
+    // ── TUBEL STAN KELAS Level 3 ─────────────────
+    TUBEL_STAN_KELAS: `✅ *Kelas TUBEL STAN*
+
+Pilih informasi yang ingin kamu ketahui:
+
+1. Deskripsi Program
+2. Fitur Kelas
+3. Harga & Durasi
+4. Cara Daftar
+5. Hubungi Admin
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`,
+
+    // ── TUBEL STAN TO Level 3 ────────────────────
+    TUBEL_STAN_TO: `✅ *TO TUBEL STAN*
+
+Saat ini TO TUBEL STAN masih belum tersedia.
+
+Pantau terus informasi terbaru melalui Instagram kami @aortatubelupkp ya kak 😊
+
+Ketik *3* untuk hubungi Admin
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`,
+
+    // ── TUBEL BPKP Level 2 ───────────────────────
+    TUBEL_BPKP: `✅ *TUBEL BPKP*
+
+Program belum tersedia
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`,
+
+    // ── UPKP ─────────────────────────────────────
+    UPKP: `✅ *UPKP Kemenkeu*
+
+Pilih informasi yang ingin kamu ketahui:
+
+1. Deskripsi Program
+2. Jadwal & Pendaftaran
+3. Fitur Kelas
+4. Harga & Durasi
+5. Cara Daftar
+6. Hubungi Admin
+
+Ketik *0* untuk kembali ke menu utama`,
+
+    // ── SAK ──────────────────────────────────────
+    SAK: `✅ *SAK Bea Cukai*
+
+Program belum tersedia
+
+Ketik *0* untuk kembali ke menu utama`,
+
+    // ── S2/LPDP Level 1 ──────────────────────────
+    S2: `✅ *Persiapan S2 / LPDP*
+
+Pilih program yang ingin kamu ketahui:
+
+1. Mints
+2. LPDP-AAS
+3. Hubungi Admin
+
+Ketik *0* untuk kembali ke menu utama`,
+
+    // ── S2 MINTS Level 2 ─────────────────────────
+    S2_MINTS: `✅ *Program Mints*
+
+Pilih yang ingin kamu ketahui:
+
+1. Kelas Mints
+2. TO Mints
+3. Hubungi Admin
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`,
+
+    // ── S2 MINTS KELAS Level 3 ───────────────────
+    S2_MINTS_KELAS: `✅ *Kelas Mints*
+
+Kelas sudah berakhir
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`,
+
+    // ── S2 MINTS TO Level 3 ──────────────────────
+    S2_MINTS_TO: `✅ *TO Mints*
+
+Pilih informasi yang ingin kamu ketahui:
+
+1. Fitur TO
+2. Harga & Durasi
+3. Cara Daftar
+4. Hubungi Admin
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`,
+
+    // ── S2 LPDP-AAS Level 2 ──────────────────────
+    S2_LPDP: `✅ *Program LPDP-AAS*
+
+Program belum tersedia
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`,
+
+    // ── OTHER ─────────────────────────────────────
+    OTHER: `✅ *UPKP Lain / TOEFL / STIS*
+
+Program belum tersedia
+
+Ketik *0* untuk kembali ke menu utama`,
+
+    // ── GARANSI ──────────────────────────────────
+    GARANSI: `✅ *Garansi Uang Kembali*
+
+Pilih program yang ingin kamu ketahui:
+
+1. Garansi UPKP Kemenkeu
+2. Garansi TUBEL
+
+Ketik *0* untuk kembali ke menu utama`,
+
+    // ── TO GRATIS ────────────────────────────────
+    TO_GRATIS: `✅ *TO Gratis*
+
+Program belum tersedia
+
+Ketik *0* untuk kembali ke menu utama`,
+};
+
+// ===== CONTENT RESPONSES =====
+const CONTENT = {
+
+    // ─────────────────────────────────────────────
+    // TUBEL STAN KELAS CONTENT
+    // ─────────────────────────────────────────────
+    TUBEL_STAN_1: {
+        text: `📋 *Deskripsi Program TUBEL STAN 2026*
+
+Kelas persiapan lengkap untuk Tugas Belajar STAN. Prepare for everything!
+
+Program mencakup:
+• TPA & TBI (Tes Potensi Akademik & Tes Bahasa Indonesia) dengan metode AortaWay
+• Psikotes (termasuk Pauli Unlimited)
+• Wawancara
+• Sharing session alumni
+
+🌐 Info lebih lanjut: linktr.ee/aortatubelupkp
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+    TUBEL_STAN_2: {
+        text: `🎯 *Fitur Kelas TUBEL STAN 2026*
+
+✅ *30 Sesi live via Zoom*
+   (Rekaman kelas tersedia | Sesi TPA, TBI, Psikotes, Wawancara & Sharing Insighful)
+
+✅ *Modul TPA & TBI inc. AortaWay (cara cepat)*
+   (Konsep dasar, cara cepat dengan metode AortaWay, lengkap dengan pembahasan)
+
+✅ *15 Paket Try Out TPA TBI IRT*
+   (8 paket TO 2024, 4 paket TO 2025, dan 3 paket TO 2026)
+
+✅ *7 Paket Try Out Psikotes*
+   (Disusun dan dilengkapi pembahasan oleh Psikolog Profesional)
+
+✅ *Konten Materi & Slide*
+   (Materi lengkap dalam bentuk video tiap materi + slide materi)
+
+✅ *Try Out Pauli Unlimited*
+   (Aplikasi Pauli dengan interval waktu variatif + report detail performa & ranking)
+
+✅ *Modul Psikotes*
+   (Bisa diakses langsung setelah checkout & akses bebas 3 bulan)
+
+✅ *Forum diskusi, motivasi & bimbingan via grup WA*
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+    TUBEL_STAN_3: {
+        text: `💰 *Harga & Durasi TUBEL STAN 2026*
+
+~~Harga Normal: Rp 1.999.000~~
+*Harga Setelah Extra Discount: Rp 799.000* 🔥
+
+*Extra Discount (bisa digabungkan!):*
+• Penempatan luar pulau/homebase → Disc. 75.000
+• Share story IG @aortatubelupkp → Disc. 50.000
+• Alumni Aorta → Disc. 100.000
+• Daftar min. ber-2 → Disc. 50.000/orang
+• Daftar min. ber-4 → Disc. 125.000/orang
+
+💡 *Diskon-diskon di atas bisa digabungkan!*
+
+Untuk info diskon dan promo terbaru:
+🌐 linktr.ee/aortatubelupkp
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+    TUBEL_STAN_4: {
+        text: `📝 *Cara Daftar Kelas TUBEL STAN*
+
+Silakan kunjungi link berikut untuk mendaftar:
+🌐 *linktr.ee/aortatubelupkp*
+
+Atau hubungi admin kami untuk panduan pendaftaran lebih lanjut dengan ketik *5*
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+
+    // ─────────────────────────────────────────────
+    // UPKP CONTENT
+    // ─────────────────────────────────────────────
+    UPKP_1: {
+        text: `📋 *Deskripsi Program UPKP Kemenkeu*
+
+Kelas persiapan khusus untuk UPKP Kemenkeu dengan materi yang disesuaikan dengan kisi-kisi terbaru.
+
+Program meliputi:
+• Tes Potensi (TPA)
+• TSKKWK (Tes Substansi Keuangan, Kepemerintahan, dan Wawasan Kebangsaan)
+• Psikotes
+
+🌐 Info lebih lanjut: linktr.ee/aortatubelupkp
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+    UPKP_2: {
+        text: `📅 *Jadwal & Pendaftaran UPKP*
+
+Pendaftaran Kelas Pioneer UPKP 2026:
+📌 *19 April s.d. Full*
+🎓 *Kelas dimulai: 03 Mei 2026*
+
+Daftar sekarang sebelum penuh!
+🌐 linktr.ee/aortatubelupkp
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+    UPKP_3: {
+        text: `🎯 *Fitur Kelas UPKP Kemenkeu (Pioneer Class)*
+
+✅ *22 sesi live via Zoom*
+   (19 sesi TPA & TSKKWK + 2 sesi bonus bimbingan psikotes + 1 bonus kelas sharing session alumni)
+
+✅ *Resume Modul TSKKWK*
+   (Tes Substansi Kementerian Keuangan & Wawasan Kebangsaan)
+   Dengan metode AORTAway: mind map, mnemonics, grouping, keywording, highlighting, dll.
+
+✅ *Modul Tes Potensi / TPA*
+   (Konsep dasar, cara cepat dengan metode AORTAway, soal dan pembahasan)
+
+✅ *6x Try Out Nasional TPA & TSKKWK*
+   (Soal berkualitas seperti ujian asli. Layout website mirip ujian asli + real-time result)
+
+✅ *2x Try Out Nasional Psikotes*
+   (Disusun oleh lulusan UPKP & profesional bidang psikologi. Terdapat interpretasi jawaban untuk psikotes kepribadian)
+
+✅ *Pengajar terbaik*
+   (Lulusan UPKP, berpengalaman, serta profesional bidang psikologi)
+
+✅ *Recording kelas tersedia*
+
+✅ *Forum diskusi, motivasi & bimbingan via grup WA*
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+    UPKP_4: {
+        text: `💰 *Harga & Durasi UPKP (Pioneer Class 2026)*
+
+~~Harga Normal: Rp 979.000~~
+*Harga Setelah Extra Discount: Rp 754.000* 🔥
+
+*Extra Discount:*
+• Peserta UPKP Baru → Extra Disc 25K
+• Peserta UPKP Mengulang / Alumni Aorta → Extra Disc 50K/75K
+• Share story + comment 3 teman → Extra Disc 50K
+
+*Ramean lebih hemat!* (extra disc s.d. 100K)
+• 2 orang = 50K/orang
+• 3 orang = 75K/orang
+• 4 orang = 100K/orang
+
+🌐 linktr.ee/aortatubelupkp
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+    UPKP_5: {
+        text: `📝 *Cara Daftar Kelas UPKP*
+
+Silakan kunjungi link berikut untuk mendaftar:
+🌐 *linktr.ee/aortatubelupkp*
+
+Atau hubungi admin kami untuk panduan pendaftaran lebih lanjut dengan ketik *6*
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+
+    // ─────────────────────────────────────────────
+    // S2 MINTS TO CONTENT
+    // ─────────────────────────────────────────────
+    S2_MINTS_TO_1: {
+        text: `🎯 *Fitur TO Mints Exercise*
+
+✅ *5 Paket Try Out TPA TBI 2025*
+
+✅ *3 Paket Try Out MINTS 2026 (inc. Listening)*
+
+✅ *IRT Scoring berdasarkan real test MINTS*
+   (Skor yang akurat sesuai standar ujian sesungguhnya)
+
+✅ *Sudah dilengkapi dengan pembahasan*
+
+✅ *Ranking Update Real Time*
+
+✅ *Dapat diulang-ulang*
+
+✅ Bisa diakses dimanapun, kapanpun, dan disaat apapun 📱
+
+💰 ~~599.000~~ → *199.000* 🔥
+
+🌐 Daftar: linktr.ee/aortatubelupkp
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+    S2_MINTS_TO_2: {
+        text: `💰 *Harga TO Mints Exercise*
+
+~~Harga Normal: Rp 599.000~~
+*Harga Sekarang: Rp 199.000* 🔥
+
+🌐 linktr.ee/aortatubelupkp
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+    S2_MINTS_TO_3: {
+        text: `📝 *Cara Daftar TO Mints*
+
+Silakan kunjungi link berikut untuk mendaftar:
+🌐 *linktr.ee/aortatubelupkp*
+
+Atau hubungi admin kami untuk panduan pendaftaran lebih lanjut dengan ketik *4*
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+    },
+
+    // ─────────────────────────────────────────────
+    // GARANSI
+    // ─────────────────────────────────────────────
+    GARANSI_UPKP: {
+        text: `💰 *GARANSI UANG KEMBALI UPKP Kemenkeu*
+
+Ketentuan:
+✅ Uang kembali 30% apabila tidak lulus di semua bagian tes (Tes Potensi, TSKKWK, Psikotes)
+✅ Uang kembali 20% apabila tidak lulus TSKKWK dan Psikotes
+✅ Uang kembali 15% apabila tidak lulus TSKKWK saja atau Psikotes saja
+
+Syarat:
+☑️ Wajib hadir di semua pertemuan dari awal sampai akhir kelas.
+    Terdapat link presensi yang akan di-share di tengah/setelah kelas dengan melampirkan bukti kehadiran dan catatan pembelajaran
+☑️ Wajib telah mengerjakan semua Try Out sebelum pelaksanaan ujian
+
+⚠️ *DISCLAIMER:*
+🔘 AORTA tidak memberi jaminan kepastian lulus UPKP dan tidak bekerja sama dengan pihak manapun untuk memastikan kelulusan siswa
+🔘 Kelulusan UPKP ditentukan oleh hasil usaha peserta sendiri dan faktor pendukung lainnya
+🔘 Mekanisme garansi adalah bentuk komitmen AORTA kepada peserta atas kualitas pembelajaran, sekaligus mengajak peserta untuk mengikuti pembelajaran dengan sungguh-sungguh
+
+📲 Ada pertanyaan lain?
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya 😊`
+    },
+    GARANSI_TUBEL: {
+        text: `💰 *GARANSI UANG KEMBALI TUBEL*
+
+Ketentuan:
+✅ Uang kembali 25% apabila tidak lulus di semua bagian tes (TPA TBI, Psikotes dan Wawancara)
+✅ Uang kembali 20% apabila tidak lulus Psikotes
+✅ Uang kembali 10% apabila tidak lulus Wawancara
+
+Syarat:
+☑️ Wajib hadir di semua pertemuan dari awal sampai akhir kelas.
+    Terdapat link presensi yang akan di-share di tengah/setelah kelas dengan melampirkan bukti kehadiran dan catatan pembelajaran
+☑️ Wajib telah mengerjakan semua Try Out sebelum pelaksanaan ujian
+
+⚠️ *DISCLAIMER:*
+🔘 AORTA tidak memberi jaminan kepastian lulus TUBEL dan tidak bekerja sama dengan pihak manapun untuk memastikan kelulusan siswa
+🔘 Kelulusan TUBEL ditentukan oleh hasil usaha peserta sendiri dan faktor pendukung lainnya
+🔘 Mekanisme garansi adalah bentuk komitmen AORTA kepada peserta atas kualitas pembelajaran, sekaligus mengajak peserta untuk mengikuti pembelajaran dengan sungguh-sungguh
+
+📲 Ada pertanyaan lain?
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya 😊`
+    },
+
+    // ─────────────────────────────────────────────
+    // LIVE AGENT
+    // ─────────────────────────────────────────────
+    LIVE_AGENT: {
+        text: `👨‍💼 *LIVE AGENT MODE*
+
+Baik kak, saya akan menghubungkan Anda dengan admin kami.
+
+✅ *Status:* Mode chat otomatis DINONAKTIFKAN
+✅ *Aksi:* Admin akan segera membalas chat Anda
+
+Silakan tunggu sebentar, admin kami akan segera merespons ya! 😊
+
+Atau Anda bisa langsung mengetik pertanyaan/pesan Anda sekarang.
+
+_Catatan: Untuk kembali ke menu otomatis, ketik "0"_`,
+        activateLiveAgent: true
+    },
+
+    // ─────────────────────────────────────────────
+    // TIMEOUT
+    // ─────────────────────────────────────────────
+    TIMEOUT_NOTIFICATION: {
+        text: `⏰ *Karena anda tidak membalas chat sebelumnya, kamu mulai saat ini akan berbicara dengan Agent Bot*
+
+Silakan pilih opsi:
+
+1️⃣ Ingin bertanya lebih lanjut dengan AortaBot
+2️⃣ Chat dengan admin
+
+Ketik *1* atau *2* untuk memilih`
+    },
+};
+
+// ===== DEFAULT FALLBACK =====
+const FALLBACK = {
+    text: `Maaf kak, saya tidak mengerti perintah tersebut 😅
+
+Silakan pilih menu di bawah ini:
+
+1. Persiapan TUBEL
+2. UPKP Kemenkeu
+3. SAK Bea Cukai
+4. Persiapan S2 / LPDP
+5. UPKP kementerian lain / TOEFL / STIS
+6. Garansi Uang Kembali
+7. TO Gratis
+8. Hubungi Admin
+
+Atau ketik *0* untuk melihat opsi lengkap 😊`
+};
+
+// ===================================================
+// ===== ADMIN PAUSE MANAGEMENT =====
+// ===================================================
+
+function isUserPausedByAdmin(userId) {
+    if (!adminPausedUsers.has(userId)) return false;
+    const pauseData = adminPausedUsers.get(userId);
+    const now = Date.now();
+    if (now >= pauseData.pauseUntil) {
+        adminPausedUsers.delete(userId);
+        console.log(`⏰ Admin pause expired for user: ${userId}`);
+        return false;
+    }
+    return true;
+}
+
+function pauseUserByAdmin(userId) {
+    const pauseUntil = Date.now() + CONFIG.adminPauseDuration;
+    adminPausedUsers.set(userId, { pauseUntil, notificationSent: false });
+    const pauseMinutes = CONFIG.adminPauseDuration / (60 * 1000);
+    console.log(`⏸️  Bot PAUSED for user ${userId} for ${pauseMinutes} minutes (admin initiated)`);
+}
+
+function unpauseUser(userId) {
+    if (adminPausedUsers.has(userId)) {
+        adminPausedUsers.delete(userId);
+        conversationInitiators.delete(userId);
+        console.log(`▶️  Bot RESUMED for user: ${userId}`);
+    }
+}
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [userId, pauseData] of adminPausedUsers.entries()) {
+        if (now >= pauseData.pauseUntil) {
+            adminPausedUsers.delete(userId);
+            conversationInitiators.delete(userId);
+            console.log(`⏰ Admin pause auto-expired for user: ${userId}`);
+        }
+    }
+}, 5 * 60 * 1000);
+
+// ===================================================
+// ===== STATE MANAGEMENT FUNCTIONS =====
+// ===================================================
+
+function getUserState(userId) {
+    if (!userStates.has(userId)) {
+        userStates.set(userId, {
+            state: STATE.MAIN_MENU,
+            subState: null,
+            history: [],           // stack history untuk back navigation
+            lastActivity: Date.now()
+        });
+    }
+    return userStates.get(userId);
+}
+
+function setUserState(userId, newState, subState = null) {
+    const current = getUserState(userId);
+
+    // Simpan posisi saat ini ke history sebelum pindah
+    current.history.push({ state: current.state, subState: current.subState });
+    // Batasi history maks 10 langkah
+    if (current.history.length > 10) current.history.shift();
+
+    current.state        = newState;
+    current.subState     = subState;
+    current.lastActivity = Date.now();
+    userStates.set(userId, current);
+
+    console.log(`🔄 State: ${newState}${subState ? ' / ' + subState : ''} [history: ${current.history.length}]`);
+}
+
+function resetUserState(userId) {
+    userStates.set(userId, {
+        state: STATE.MAIN_MENU,
+        subState: null,
+        history: [],
+        lastActivity: Date.now()
+    });
+}
+
+// ── Kembali ke state sebelumnya (history pop) ─────────────────────
+function goBack(userId) {
+    const current = getUserState(userId);
+
+    if (!current.history || current.history.length === 0) {
+        resetUserState(userId);
+        return { text: MENUS.MAIN, deactivateLiveAgent: true };
+    }
+
+    const prev = current.history.pop();
+    current.state        = prev.state;
+    current.subState     = prev.subState;
+    current.lastActivity = Date.now();
+    userStates.set(userId, current);
+
+    console.log(`⬅️  Go BACK: ${prev.state}${prev.subState ? ' / ' + prev.subState : ''} [history: ${current.history.length}]`);
+
+    return getMenuForState(prev.state, prev.subState);
+}
+
+// ── Mapping state → teks menu ─────────────────────────────────────
+function getMenuForState(state, subState) {
+    if (state === STATE.MAIN_MENU)    return { text: MENUS.MAIN };
+    if (state === STATE.UPKP_MENU)    return { text: MENUS.UPKP };
+    if (state === STATE.SAK_MENU)     return { text: MENUS.SAK };
+    if (state === STATE.OTHER_MENU)   return { text: MENUS.OTHER };
+    if (state === STATE.TO_MENU)      return { text: MENUS.TO_GRATIS };
+    if (state === STATE.GARANSI_MENU) return { text: MENUS.GARANSI };
+
+    if (state === STATE.TUBEL_MENU) {
+        if (!subState)                 return { text: MENUS.TUBEL };
+        if (subState === 'STAN')       return { text: MENUS.TUBEL_STAN };
+        if (subState === 'STAN_KELAS') return { text: MENUS.TUBEL_STAN_KELAS };
+        if (subState === 'STAN_TO')    return { text: MENUS.TUBEL_STAN_TO };
+        if (subState === 'BPKP')       return { text: MENUS.TUBEL_BPKP };
+        return { text: MENUS.TUBEL };
+    }
+
+    if (state === STATE.S2_MENU) {
+        if (!subState)                  return { text: MENUS.S2 };
+        if (subState === 'MINTS')       return { text: MENUS.S2_MINTS };
+        if (subState === 'MINTS_KELAS') return { text: MENUS.S2_MINTS_KELAS };
+        if (subState === 'MINTS_TO')    return { text: MENUS.S2_MINTS_TO };
+        if (subState === 'LPDP')        return { text: MENUS.S2_LPDP };
+        return { text: MENUS.S2 };
+    }
+
+    return { text: MENUS.MAIN };
+}
+
+// ===================================================
+// ===== MESSAGE ROUTING LOGIC =====
+// ===================================================
+
+function routeMessage(userId, messageText) {
+    const userState = getUserState(userId);
+    const input = messageText.toLowerCase().trim();
+
+    // ── 0  → kembali ke menu UTAMA ───────────────
+    if (input === '0' || input === 'menu') {
+        resetUserState(userId);
+        return { text: MENUS.MAIN, deactivateLiveAgent: true };
+    }
+
+    // ── 00 → kembali ke menu SEBELUMNYA ──────────
+    if (input === '00' || input === 'kembali' || input === 'back') {
+        return goBack(userId);
+    }
+
+    // ── Live Agent (global shortcut) ──────────────
+    if (
+        input === '8' || input === 'live agent' || input === 'agent' ||
+        input === 'admin' || input.includes('hubungi admin') ||
+        input.includes('bicara dengan admin')
+    ) {
+        return CONTENT.LIVE_AGENT;
+    }
+
+    // ── Greeting → Main Menu ──────────────────────
+    const greetings = [
+        'halo','hai','hallo','hello','info','p','pagi',
+        'siang','sore','malam','nanya','ada','apakah',
+        'gimana','tes','berapa','dimana','daftar',
+        'kelas','rencana','kapan'
+    ];
+    if (greetings.includes(input)) {
+        resetUserState(userId);
+        return { text: MENUS.MAIN };
+    }
+
+    // ── State-based routing ───────────────────────
+    switch (userState.state) {
+        case STATE.MAIN_MENU:    return handleMainMenu(userId, input);
+        case STATE.TUBEL_MENU:   return handleTubelMenu(userId, input, userState.subState);
+        case STATE.UPKP_MENU:    return handleUpkpMenu(userId, input);
+        case STATE.SAK_MENU:     return handleSakMenu(userId, input);
+        case STATE.S2_MENU:      return handleS2Menu(userId, input, userState.subState);
+        case STATE.OTHER_MENU:   return handleOtherMenu(userId, input);
+        case STATE.TO_MENU:      return handleToGratisMenu(userId, input);
+        case STATE.GARANSI_MENU: return handleGaransiMenu(userId, input);
+        default:
+            resetUserState(userId);
+            return FALLBACK;
+    }
+}
+
+// ===================================================
+// ===== MENU HANDLERS =====
+// ===================================================
+
+// ── MAIN MENU ────────────────────────────────────────────────────
+function handleMainMenu(userId, input) {
+    switch (input) {
+        case '1':
+            setUserState(userId, STATE.TUBEL_MENU, null);
+            return { text: MENUS.TUBEL };
+
+        case '2':
+            setUserState(userId, STATE.UPKP_MENU);
+            return {
+                text: MENUS.UPKP,
+                file: 'Pioneer Class UPKP 2026.pdf',
+                fileName: 'Pioneer Class UPKP 2026.pdf',
+                fileCaption: '📎 *Info lengkap Kelas Pioneer UPKP 2026*\nMulai dari IDR 754.000 (setelah extra disc!) 🔥\nKelas dimulai 03 Mei 2026'
+            };
+
+        case '3':
+            setUserState(userId, STATE.SAK_MENU);
+            return { text: MENUS.SAK };
+
+        case '4':
+            setUserState(userId, STATE.S2_MENU, null);
+            return { text: MENUS.S2 };
+
+        case '5':
+            setUserState(userId, STATE.OTHER_MENU);
+            return { text: MENUS.OTHER };
+
+        case '6':
+            setUserState(userId, STATE.GARANSI_MENU);
+            return { text: MENUS.GARANSI };
+
+        case '7':
+            setUserState(userId, STATE.TO_MENU);
+            return { text: MENUS.TO_GRATIS };
+
+        case '8':
+            return CONTENT.LIVE_AGENT;
+
+        default:
+            return FALLBACK;
+    }
+}
+
+// ── TUBEL MENU (3-level) ──────────────────────────────────────────
+function handleTubelMenu(userId, input, subState) {
+
+    // Level 1: pilih STAN / BPKP
+    if (!subState) {
+        switch (input) {
+            case '1':
+                setUserState(userId, STATE.TUBEL_MENU, 'STAN');
+                return {
+                    text: MENUS.TUBEL_STAN,
+                    file: 'Tubel STAN Class 2026.pdf',
+                    fileName: 'Tubel STAN Class 2026.pdf',
+                    fileCaption: '📎 *Info lengkap Tubel STAN Class 2026*\nSetelah extra disc: Rp 799.000 🔥'
+                };
+            case '2':
+                setUserState(userId, STATE.TUBEL_MENU, 'BPKP');
+                return { text: MENUS.TUBEL_BPKP };
+            case '3':
+                return CONTENT.LIVE_AGENT;
+            default:
+                return { text: MENUS.TUBEL };
+        }
+    }
+
+    // Level 2: STAN → pilih Kelas / TO
+    if (subState === 'STAN') {
+        switch (input) {
+            case '1':
+                setUserState(userId, STATE.TUBEL_MENU, 'STAN_KELAS');
+                return { text: MENUS.TUBEL_STAN_KELAS };
+            case '2':
+                setUserState(userId, STATE.TUBEL_MENU, 'STAN_TO');
+                return { text: MENUS.TUBEL_STAN_TO };
+            case '3':
+                return CONTENT.LIVE_AGENT;
+            default:
+                return { text: MENUS.TUBEL_STAN };
+        }
+    }
+
+    // Level 3: STAN_KELAS → konten detail
+    if (subState === 'STAN_KELAS') {
+        switch (input) {
+            case '1': return CONTENT.TUBEL_STAN_1;
+            case '2': return CONTENT.TUBEL_STAN_2;
+            case '3': return CONTENT.TUBEL_STAN_3;
+            case '4': return CONTENT.TUBEL_STAN_4;
+            case '5': return CONTENT.LIVE_AGENT;
+            default:  return { text: MENUS.TUBEL_STAN_KELAS };
+        }
+    }
+
+    // Level 3: STAN_TO → belum tersedia
+    if (subState === 'STAN_TO') {
+        switch (input) {
+            case '3': return CONTENT.LIVE_AGENT;
+            default:  return { text: MENUS.TUBEL_STAN_TO };
+        }
+    }
+
+    // Level 2: BPKP → belum tersedia
+    if (subState === 'BPKP') {
+        return { text: MENUS.TUBEL_BPKP };
+    }
+
+    return { text: MENUS.TUBEL };
+}
+
+// ── UPKP SUBMENU ─────────────────────────────────────────────────
+function handleUpkpMenu(userId, input) {
+    switch (input) {
+        case '1': return CONTENT.UPKP_1;
+        case '2': return CONTENT.UPKP_2;
+        case '3': return CONTENT.UPKP_3;
+        case '4': return CONTENT.UPKP_4;
+        case '5': return CONTENT.UPKP_5;
+        case '6': return CONTENT.LIVE_AGENT;
+        default:  return { text: MENUS.UPKP };
+    }
+}
+
+// ── SAK SUBMENU ──────────────────────────────────────────────────
+function handleSakMenu(userId, input) {
+    return { text: MENUS.SAK };
+}
+
+// ── S2/LPDP MENU (2-level) ───────────────────────────────────────
+function handleS2Menu(userId, input, subState) {
+
+    if (!subState) {
+        switch (input) {
+            case '1':
+                setUserState(userId, STATE.S2_MENU, 'MINTS');
+                return { text: MENUS.S2_MINTS };
+            case '2':
+                setUserState(userId, STATE.S2_MENU, 'LPDP');
+                return { text: MENUS.S2_LPDP };
+            case '3':
+                return CONTENT.LIVE_AGENT;
+            default:
+                return { text: MENUS.S2 };
+        }
+    }
+
+    if (subState === 'MINTS') {
+        switch (input) {
+            case '1':
+                setUserState(userId, STATE.S2_MENU, 'MINTS_KELAS');
+                return { text: MENUS.S2_MINTS_KELAS };
+            case '2':
+                setUserState(userId, STATE.S2_MENU, 'MINTS_TO');
+                return { text: MENUS.S2_MINTS_TO };
+            case '3':
+                return CONTENT.LIVE_AGENT;
+            default:
+                return { text: MENUS.S2_MINTS };
+        }
+    }
+
+    if (subState === 'MINTS_KELAS') {
+        return { text: MENUS.S2_MINTS_KELAS };
+    }
+
+    if (subState === 'MINTS_TO') {
+        switch (input) {
+            case '1': return CONTENT.S2_MINTS_TO_1;
+            case '2': return CONTENT.S2_MINTS_TO_2;
+            case '3': return CONTENT.S2_MINTS_TO_3;
+            case '4': return CONTENT.LIVE_AGENT;
+            default:  return { text: MENUS.S2_MINTS_TO };
+        }
+    }
+
+    if (subState === 'LPDP') {
+        return { text: MENUS.S2_LPDP };
+    }
+
+    return { text: MENUS.S2 };
+}
+
+// ── OTHER SUBMENU ────────────────────────────────────────────────
+function handleOtherMenu(userId, input) {
+    return { text: MENUS.OTHER };
+}
+
+// ── GARANSI MENU ─────────────────────────────────────────────────
+function handleGaransiMenu(userId, input) {
+    switch (input) {
+        case '1': return CONTENT.GARANSI_UPKP;
+        case '2': return CONTENT.GARANSI_TUBEL;
+        default:  return { text: MENUS.GARANSI };
+    }
+}
+
+// ── TO GRATIS SUBMENU ────────────────────────────────────────────
+function handleToGratisMenu(userId, input) {
+    return { text: MENUS.TO_GRATIS };
+}
+
+// ===================================================
+// ===== LIVE AGENT MANAGEMENT =====
+// ===================================================
+
+function isInLiveAgentMode(userId) {
+    return liveAgentSessions.has(userId);
+}
+
+function activateLiveAgent(userId) {
+    liveAgentSessions.set(userId, { activatedAt: Date.now(), lastActivity: Date.now() });
+    console.log(`👨‍💼 Live Agent Mode ACTIVATED for user: ${userId}`);
+}
+
+function deactivateLiveAgent(userId) {
+    liveAgentSessions.delete(userId);
+    console.log(`🤖 Live Agent Mode DEACTIVATED for user: ${userId}`);
+}
+
+function checkLiveAgentTimeout() {
+    const now = Date.now();
+    for (const [userId, session] of liveAgentSessions.entries()) {
+        if (now - session.lastActivity > CONFIG.liveAgentTimeout) {
+            deactivateLiveAgent(userId);
+            console.log(`⏰ Live Agent session expired for user: ${userId}`);
+        }
+    }
+}
+
+setInterval(checkLiveAgentTimeout, 5 * 60 * 1000);
+
+// ===================================================
+// ===== HELPER FUNCTIONS =====
+// ===================================================
+
+function getRandomDelay(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+async function simulateTyping(sock, jid) {
+    try {
+        await sock.presenceSubscribe(jid);
+        await sock.sendPresenceUpdate('composing', jid);
+        await delay(CONFIG.typingDuration);
+        await sock.sendPresenceUpdate('paused', jid);
+    } catch (error) {
+        console.log('⚠️  Typing simulation error (non-critical)');
+    }
+}
+
+function isRateLimited() {
+    const now = Date.now();
+    messageTracker.messagesInLastMinute = messageTracker.messagesInLastMinute.filter(
+        time => now - time < 60000
+    );
+    return messageTracker.messagesInLastMinute.length >= CONFIG.maxMessagesPerMinute;
+}
+
+function updateTracking() {
+    messageTracker.messagesInLastMinute.push(Date.now());
+}
+
+async function sendReply(sock, jid, reply) {
+    try {
+        const initialDelay = getRandomDelay(CONFIG.minReplyDelay, CONFIG.maxReplyDelay);
+        console.log(`⏳ Menunggu ${initialDelay}ms sebelum membalas...`);
+        await delay(initialDelay);
+
+        console.log('✍️  Typing...');
+        await simulateTyping(sock, jid);
+
+        if (reply.file) {
+            const filePath = path.join(__dirname, reply.file);
+            if (fs.existsSync(filePath)) {
+                await sock.sendMessage(jid, { text: reply.text });
+                await delay(800);
+                const fileBuffer = fs.readFileSync(filePath);
+                const docMsg = {
+                    document: fileBuffer,
+                    fileName: reply.fileName || reply.file,
+                    mimetype: 'application/pdf',
+                };
+                if (reply.fileCaption) docMsg.caption = reply.fileCaption;
+                await sock.sendMessage(jid, docMsg);
+                console.log(`📄 File terkirim: ${reply.file}`);
+            } else {
+                console.log(`⚠️ File tidak ditemukan: ${filePath}`);
+                await sock.sendMessage(jid, {
+                    text: reply.text + '\n\n⚠️ (Maaf kak, file sementara tidak tersedia)'
+                });
+            }
+        } else if (reply.image) {
+            const imagePath = path.join(__dirname, reply.image);
+            if (fs.existsSync(imagePath)) {
+                const imageBuffer = fs.readFileSync(imagePath);
+                await sock.sendMessage(jid, { image: imageBuffer, caption: reply.text });
+                console.log(`📸 Gambar terkirim: ${reply.image}`);
+            } else {
+                console.log(`⚠️ Gambar tidak ditemukan: ${imagePath}`);
+                await sock.sendMessage(jid, { text: reply.text });
+            }
+        } else {
+            await sock.sendMessage(jid, { text: reply.text });
+        }
+
+        return true;
+    } catch (error) {
+        console.error('❌ Error mengirim reply:', error);
+        return false;
+    }
+}
+
+// ===================================================
+// ===== BOT INITIALIZATION =====
+// ===================================================
+
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+    const { version } = await fetchLatestBaileysVersion();
+
+    sock = makeWASocket({
+        logger: Pino({ level: 'silent' }),
+        auth: state,
+        browser: ['Aorta Bot v2', 'Chrome', '2.0.0'],
+        version,
+        markOnlineOnConnect: true,
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+        if (qr) {
+            console.log('\n📱 Scan QR Code di bawah ini:\n');
+            qrcode.generate(qr, { small: true });
+            console.log('\nBuka WhatsApp > Linked Devices > Link a Device');
+        }
+
+        if (connection === 'open') {
+            console.log('\n✅ Bot WhatsApp v2.5 sudah aktif!\n');
+            console.log('🎯 Fitur:');
+            console.log('   ✓ Ketik 0  → kembali ke menu utama');
+            console.log('   ✓ Ketik 00 → kembali ke menu sebelumnya (history stack)');
+            console.log('   ✓ Harga TUBEL STAN: Rp 799.000 (after extra disc)');
+            console.log('   ✓ Harga UPKP Pioneer: Rp 754.000 (after extra disc)');
+            console.log('   ✓ Live Agent Mode');
+            console.log('   ✓ Admin First-Chat Auto Pause (1 jam)\n');
+        }
+
+        if (connection === 'close') {
+            const reason = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = reason !== DisconnectReason.loggedOut;
+            console.log('❌ Terputus:', reason);
+            if (shouldReconnect) {
+                console.log('🔄 Mencoba reconnect dalam 5 detik...');
+                setTimeout(() => startBot(), 5000);
+            } else {
+                console.log('⚠️ Logged out. Hapus folder auth_info dan restart bot.');
+            }
+        }
+    });
+
+    // ===== MESSAGE LISTENER =====
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+        const msg = messages[0];
+        if (!msg.message) return;
+
+        const from     = msg.key.remoteJid;
+        const userId   = from.split('@')[0];
+        const isFromMe = msg.key.fromMe;
+
+        if (excludedNumbers.includes(from)) return;
+        if (from.endsWith('@g.us')) return;
+
+        const text = msg.message.conversation ||
+                     msg.message.extendedTextMessage?.text;
+        if (!text) return;
+
+        const messageText = text.toLowerCase().trim();
+
+        console.log(`\n📨 [${new Date().toLocaleString('id-ID')}] Pesan dari ${isFromMe ? 'ADMIN' : userId}`);
+        console.log(`💬 "${text}"`);
+
+        // ── Track conversation initiator ───────────
+        if (!conversationInitiators.has(from)) {
+            conversationInitiators.set(from, isFromMe ? 'admin' : 'user');
+            console.log(`🎯 Conversation INITIATED by ${isFromMe ? 'ADMIN' : 'USER'}`);
+        }
+
+        // ── Admin initiated ────────────────────────
+        if (isFromMe && conversationInitiators.get(from) === 'admin') {
+            console.log(`👨‍💼 Pesan dari ADMIN terdeteksi (Admin initiated chat)`);
+            pauseUserByAdmin(from);
+            return;
+        }
+
+        // ── Admin reply to user-initiated ──────────
+        if (isFromMe && conversationInitiators.get(from) === 'user') {
+            const isBotTemplate =
+                text.includes('[Chat Otomatis]') ||
+                text.includes('✅ *') ||
+                text.includes('Ketik *0* untuk kembali') ||
+                text.includes('Pilih informasi yang ingin kamu ketahui') ||
+                text.includes('Pilih program yang ingin kamu ketahui') ||
+                text.includes('Maaf kak, saya tidak mengerti');
+
+            if (!isBotTemplate) {
+                console.log(`🚨 ADMIN MANUAL INTERVENTION detected!`);
+                conversationInitiators.set(from, 'admin');
+                pauseUserByAdmin(from);
+                return;
+            }
+            console.log(`🤖 Bot template detected - skipping`);
+            return;
+        }
+
+        // ── Cek user dipause oleh admin ────────────
+        if (isUserPausedByAdmin(from)) {
+            const pauseData = adminPausedUsers.get(from);
+            const remainingMinutes = Math.ceil((pauseData.pauseUntil - Date.now()) / (60 * 1000));
+            console.log(`⏸️  Bot PAUSED for user ${userId} (${remainingMinutes} minutes remaining)`);
+
+            if (['0', 'menu', '00', 'kembali', 'back'].includes(messageText)) {
+                unpauseUser(from);
+                const reply = routeMessage(userId, messageText);
+                await sendReply(sock, from, reply);
+                updateTracking();
+            }
+            return;
+        }
+
+        // ── Cek live agent mode ────────────────────
+        if (isInLiveAgentMode(userId)) {
+            console.log(`👨‍💼 User ${userId} sedang dalam Live Agent Mode`);
+            const session = liveAgentSessions.get(userId);
+            session.lastActivity = Date.now();
+
+            if (['0', 'menu', '00', 'kembali', 'back'].includes(messageText)) {
+                const reply = routeMessage(userId, messageText);
+                await sendReply(sock, from, reply);
+                if (reply.deactivateLiveAgent) deactivateLiveAgent(userId);
+                updateTracking();
+            } else {
+                console.log(`⏸️  Auto-reply DINONAKTIFKAN - menunggu admin`);
+            }
+            return;
+        }
+
+        // ── Rate limiting ──────────────────────────
+        if (isRateLimited()) {
+            console.log('⚠️  Rate limit tercapai! Menunggu...');
+            await delay(10000);
+        }
+
+        // ── Route message ──────────────────────────
+        const reply = routeMessage(userId, messageText);
+
+        if (reply.activateLiveAgent)   activateLiveAgent(userId);
+        if (reply.deactivateLiveAgent) deactivateLiveAgent(userId);
+
+        const success = await sendReply(sock, from, reply);
+
+        if (success) {
+            console.log(`✅ Dibalas: "${reply.text.substring(0, 50)}..."\n`);
+            updateTracking();
+        } else {
+            console.log(`❌ Gagal kirim ke ${userId}\n`);
+        }
+    });
+}
+
+// ===================================================
+// ===== GRACEFUL SHUTDOWN =====
+// ===================================================
+
+async function gracefulShutdown() {
+    console.log('\n⏸️  Menghentikan bot dengan aman...');
+    if (sock) {
+        try {
+            await sock.logout();
+            console.log('✅ Bot berhasil logout');
+        } catch {
+            console.log('⚠️  Logout error (normal jika sudah disconnect)');
+        }
+    }
+    console.log('👋 Bot dihentikan. Sampai jumpa!');
+    process.exit(0);
+}
+
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
+
+// ===================================================
+// ===== START BOT =====
+// ===================================================
+
+console.log('🚀 Starting Aorta Bot v2.5...');
+console.log('🎯 Fitur:');
+console.log('   ✓ Ketik 0  → kembali ke menu utama');
+console.log('   ✓ Ketik 00 → kembali ke menu sebelumnya');
+console.log('   ✓ Harga TUBEL STAN diupdate: Rp 799.000 (after extra disc)');
+console.log('   ✓ Extra disc TUBEL STAN: Luar Pulau 75K, Share IG 50K, Alumni 100K, Ber-2 50K, Ber-4 125K');
+console.log('   ✓ Harga UPKP diupdate: Rp 754.000 (after extra disc)');
+console.log('   ✓ Extra disc UPKP: Baru 25K, Mengulang/Alumni 50K/75K, Share story 50K, Ramean s.d. 100K');
+console.log('   ✓ Live Agent Mode');
+console.log('   ✓ Admin First-Chat Auto Pause (1 jam)\n');
+
+startBot().catch(err => {
+    console.error('❌ Error starting bot:', err);
+});
