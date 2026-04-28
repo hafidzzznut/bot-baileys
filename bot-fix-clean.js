@@ -23,7 +23,7 @@ const CONFIG = {
     maxReplyDelay: 5000,
     typingDuration: 3000,
     maxMessagesPerMinute: 10,
-    liveAgentTimeout: 30 * 60 * 1000,
+    liveAgentTimeout: 24 * 60 * 60 * 1000,  // 24 jam
     adminPauseDuration: 60 * 60 * 1000,
 };
 
@@ -44,6 +44,9 @@ const userStates             = new Map();
 const liveAgentSessions      = new Map();
 const adminPausedUsers       = new Map();
 const conversationInitiators = new Map();
+
+// ===== FIRST TIME USER TRACKING =====
+const firstTimeUsers = new Set();
 
 // ===== RATE LIMITING =====
 const messageTracker = { messagesInLastMinute: [] };
@@ -71,7 +74,7 @@ Info bertanya tentang apa?
 5. UPKP kementerian lain / TOEFL / STIS
 6. Garansi Uang Kembali
 7. TO Gratis
-8. Hubungi Admin (live agent)
+8. Hubungi Admin (Live Admin)
 
 Ditunggu maksimal 10menit ya kak 😁 
 Apabila lebih dari 1 jam tidak dijawab mohon re-chat
@@ -108,7 +111,7 @@ Pilih informasi yang ingin kamu ketahui:
 
 1. Deskripsi Program
 2. Fitur Kelas
-3. Harga & Durasi
+3. Harga & Promo
 4. Cara Daftar
 5. Hubungi Admin
 
@@ -142,7 +145,7 @@ Pilih informasi yang ingin kamu ketahui:
 1. Deskripsi Program
 2. Jadwal & Pendaftaran
 3. Fitur Kelas
-4. Harga & Durasi
+4. Harga & Promo
 5. Cara Daftar
 6. Hubungi Admin
 
@@ -192,7 +195,7 @@ Ketik *00* untuk kembali ke menu sebelumnya`,
 Pilih informasi yang ingin kamu ketahui:
 
 1. Fitur TO
-2. Harga & Durasi
+2. Harga & Promo
 3. Cara Daftar
 4. Hubungi Admin
 
@@ -555,7 +558,7 @@ Silakan pilih menu di bawah ini:
 5. UPKP kementerian lain / TOEFL / STIS
 6. Garansi Uang Kembali
 7. TO Gratis
-8. Hubungi Admin
+8. Hubungi Admin (Live Admin)
 
 Atau ketik *0* untuk melihat opsi lengkap 😊`
 };
@@ -611,7 +614,7 @@ function getUserState(userId) {
         userStates.set(userId, {
             state: STATE.MAIN_MENU,
             subState: null,
-            history: [],           // stack history untuk back navigation
+            history: [],
             lastActivity: Date.now()
         });
     }
@@ -621,9 +624,7 @@ function getUserState(userId) {
 function setUserState(userId, newState, subState = null) {
     const current = getUserState(userId);
 
-    // Simpan posisi saat ini ke history sebelum pindah
     current.history.push({ state: current.state, subState: current.subState });
-    // Batasi history maks 10 langkah
     if (current.history.length > 10) current.history.shift();
 
     current.state        = newState;
@@ -979,7 +980,7 @@ function checkLiveAgentTimeout() {
     for (const [userId, session] of liveAgentSessions.entries()) {
         if (now - session.lastActivity > CONFIG.liveAgentTimeout) {
             deactivateLiveAgent(userId);
-            console.log(`⏰ Live Agent session expired for user: ${userId}`);
+            console.log(`⏰ Live Agent session expired (24h) for user: ${userId}`);
         }
     }
 }
@@ -1093,13 +1094,14 @@ async function startBot() {
         }
 
         if (connection === 'open') {
-            console.log('\n✅ Bot WhatsApp v2.5 sudah aktif!\n');
+            console.log('\n✅ Bot WhatsApp v2.6 sudah aktif!\n');
             console.log('🎯 Fitur:');
+            console.log('   ✓ Pesan pertama user → selalu tampilkan Main Menu');
             console.log('   ✓ Ketik 0  → kembali ke menu utama');
             console.log('   ✓ Ketik 00 → kembali ke menu sebelumnya (history stack)');
             console.log('   ✓ Harga TUBEL STAN: Rp 799.000 (after extra disc)');
             console.log('   ✓ Harga UPKP Pioneer: Rp 754.000 (after extra disc)');
-            console.log('   ✓ Live Agent Mode');
+            console.log('   ✓ Live Agent Mode (cooldown 24 jam)');
             console.log('   ✓ Admin First-Chat Auto Pause (1 jam)\n');
         }
 
@@ -1185,6 +1187,16 @@ async function startBot() {
             return;
         }
 
+        // ── First time user → selalu tampilkan Main Menu ──
+        if (!firstTimeUsers.has(from)) {
+            firstTimeUsers.add(from);
+            console.log(`🆕 First time user: ${userId} → showing Main Menu`);
+            resetUserState(userId);
+            await sendReply(sock, from, { text: MENUS.MAIN });
+            updateTracking();
+            return;
+        }
+
         // ── Cek live agent mode ────────────────────
         if (isInLiveAgentMode(userId)) {
             console.log(`👨‍💼 User ${userId} sedang dalam Live Agent Mode`);
@@ -1250,17 +1262,19 @@ process.on('SIGTERM', gracefulShutdown);
 // ===== START BOT =====
 // ===================================================
 
-console.log('🚀 Starting Aorta Bot v2.5...');
+console.log('🚀 Starting Aorta Bot v2.6...');
 console.log('🎯 Fitur:');
+console.log('   ✓ Pesan pertama user → selalu tampilkan Main Menu');
 console.log('   ✓ Ketik 0  → kembali ke menu utama');
 console.log('   ✓ Ketik 00 → kembali ke menu sebelumnya');
 console.log('   ✓ Harga TUBEL STAN diupdate: Rp 799.000 (after extra disc)');
 console.log('   ✓ Extra disc TUBEL STAN: Luar Pulau 75K, Share IG 50K, Alumni 100K, Ber-2 50K, Ber-4 125K');
 console.log('   ✓ Harga UPKP diupdate: Rp 754.000 (after extra disc)');
 console.log('   ✓ Extra disc UPKP: Baru 25K, Mengulang/Alumni 50K/75K, Share story 50K, Ramean s.d. 100K');
-console.log('   ✓ Live Agent Mode');
+console.log('   ✓ Live Agent Mode (cooldown 24 jam)');
 console.log('   ✓ Admin First-Chat Auto Pause (1 jam)\n');
 
 startBot().catch(err => {
     console.error('❌ Error starting bot:', err);
 });
+
