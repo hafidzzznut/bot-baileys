@@ -74,7 +74,7 @@ Info bertanya tentang apa?
 5. UPKP kementerian lain / TOEFL / STIS
 6. Garansi Uang Kembali
 7. TO Gratis
-8. Hubungi Admin (Live Admin)
+8. Hubungi Admin
 
 Ditunggu maksimal 10menit ya kak 😁 
 Apabila lebih dari 1 jam tidak dijawab mohon re-chat
@@ -182,9 +182,14 @@ Ketik *0* untuk kembali ke menu utama
 Ketik *00* untuk kembali ke menu sebelumnya`,
 
     // ── S2 MINTS KELAS Level 3 ───────────────────
-    S2_MINTS_KELAS: `✅ *Kelas Mints*
+    S2_MINTS_KELAS: `✅ *Kelas Psikotest Mints*
 
-Kelas sudah berakhir
+Pilih informasi yang ingin kamu ketahui:
+
+1. Fitur Kelas
+2. Harga & Promo
+3. Cara Daftar
+4. Hubungi Admin
 
 Ketik *0* untuk kembali ke menu utama
 Ketik *00* untuk kembali ke menu sebelumnya`,
@@ -415,6 +420,70 @@ Ketik *00* untuk kembali ke menu sebelumnya`
     // ─────────────────────────────────────────────
     // S2 MINTS TO CONTENT
     // ─────────────────────────────────────────────
+
+MINTS_KELAS_1: {
+    text: `🎯 *Fitur Kelas Psikotes MINTS 2026*
+
+✅ *6 Sesi with Psikolog*
+   (Terdapat Rekaman Kelas. Sesi kelas terdiri dari Sesi Materi Psikotes dasar dengan Psikolog serta Tips jitu Psikotes MINTS 2026)
+
+✅ *Modul Psikotes*
+   (Selain konsep dasar, cara cepat dengan metode AortaWay lengkap dengan Pembahasan)
+
+✅ *5 Paket Try Out Psikotes by Psikolog*
+   (3 Paket TO Psikotes 2025 dan 2 Paket Psikotes 2026 sesuai format terbaru, dilengkapi pembahasan oleh Psikolog Profesional)
+
+✅ *8 Paket Try Out Psikotes Extras*
+   (2 Paket TO Psikotes Tubel STAN 2022 yang sudah sesuai format terbaru + 6 Paket TO TPA, disusun oleh Psikolog Profesional)
+
+✅ *Konten Materi & Slide*
+   (Materi lengkap untuk TPA dan Psikotes dalam bentuk video dan slide materi)
+
+✅ *Try Out Pauli Unlimited*
+   (Aplikasi Pauli dengan interval waktu variatif + report detail performa & ranking)
+
+✅ *Sesi Interpretasi & Evaluasi Psikolog*
+   (Hasil TO Psikotes diinterpretasi oleh Psikolog dan dibahas langsung via live meet)
+
+✅ *Forum diskusi, motivasi & konsultasi via WA*
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+},
+MINTS_KELAS_2: {
+    text: `💰 *Harga & Promo Kelas Psikotes MINTS 2026*
+
+~~Harga Normal: Rp 1.050.000~~
+*Harga Setelah Extra Discount: Rp 699.000* 🔥
+
+*Extra Discount (bisa digabungkan!):*
+- Share Story & Tag 3 teman di comment → Disc. 100.000
+- Percobaan 1 → Disc. 50.000
+- Percobaan 2 → Disc. 100.000
+- Inspira → Disc. 50.000
+- Ramean Ber-2 → Disc. 50.000/orang
+- Ramean Ber-4 → Disc. 100.000/orang
+
+🌐 linktr.ee/aortatubelupkp
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+},
+MINTS_KELAS_3: {
+    text: `📝 *Cara Daftar Kelas Psikotes MINTS 2026*
+
+1️⃣ Buat akun dulu di *www.aorta-edu.com*
+2️⃣ Ubah Lifetime ke 6 Bulan agar harga berubah
+3️⃣ Terapkan kupon diskonmu
+
+🛒 Beli disini: *linktr.ee/aortatubelupkp*
+
+Atau hubungi admin kami dengan ketik *4*
+
+Ketik *0* untuk kembali ke menu utama
+Ketik *00* untuk kembali ke menu sebelumnya`
+},
+
     S2_MINTS_TO_1: {
         text: `🎯 *Fitur TO Mints Exercise*
 
@@ -558,7 +627,7 @@ Silakan pilih menu di bawah ini:
 5. UPKP kementerian lain / TOEFL / STIS
 6. Garansi Uang Kembali
 7. TO Gratis
-8. Hubungi Admin (Live Admin)
+8. Hubungi Admin
 
 Atau ketik *0* untuk melihat opsi lengkap 😊`
 };
@@ -902,11 +971,16 @@ function handleS2Menu(userId, input, subState) {
         }
     }
 
-    if (subState === 'MINTS') {
+   if (subState === 'MINTS') {
         switch (input) {
             case '1':
                 setUserState(userId, STATE.S2_MENU, 'MINTS_KELAS');
-                return { text: MENUS.S2_MINTS_KELAS };
+                return {
+                    text: MENUS.S2_MINTS_KELAS,
+                    file: 'MINTS Psikotes 2026 by Aorta.pdf',
+                    fileName: 'MINTS Psikotes 2026 by Aorta.pdf',
+                    fileCaption: '📎 *Info lengkap Kelas MINTS Psikotes 2026*\nStart from Rp 499.000 🔥\nKelas dimulai 07 Mei 2026'
+                };
             case '2':
                 setUserState(userId, STATE.S2_MENU, 'MINTS_TO');
                 return { text: MENUS.S2_MINTS_TO };
@@ -918,8 +992,14 @@ function handleS2Menu(userId, input, subState) {
     }
 
     if (subState === 'MINTS_KELAS') {
-        return { text: MENUS.S2_MINTS_KELAS };
+    switch (input) {
+        case '1': return CONTENT.MINTS_KELAS_1;
+        case '2': return CONTENT.MINTS_KELAS_2;
+        case '3': return CONTENT.MINTS_KELAS_3;
+        case '4': return CONTENT.LIVE_AGENT;
+        default:  return { text: MENUS.S2_MINTS_KELAS };
     }
+}
 
     if (subState === 'MINTS_TO') {
         switch (input) {
